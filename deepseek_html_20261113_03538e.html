@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NSE F&O Single-Session Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#17243b;--muted:#65738a;--line:#e1e7f0;--blue:#2458cf;--blue2:#edf3ff;--green:#087b55;--greenbg:#e8f7f0;--red:#c83e4d;--redbg:#fff0f1;--amber:#916313;--amberbg:#fff7e5;--shadow:0 8px 26px #1c37600c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.48 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:linear-gradient(120deg,#101d3b,#2458bd);color:white;padding:24px max(16px,calc((100% - 1500px)/2))}
+header .eyebrow{font-size:10px;letter-spacing:1.7px;color:#cbd9ff;font-weight:800;text-transform:uppercase}
+h1{font-size:25px;margin:4px 0}
+header p{margin:0;color:#dce6ff;max-width:900px}
+main{max-width:1500px;margin:18px auto;padding:0 16px 42px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:240px}
+.muted,.hint{color:var(--muted);font-size:12px}
+.tiny{font-size:10px;color:var(--muted)}
+label{display:block;font-size:10px;letter-spacing:.55px;text-transform:uppercase;font-weight:800;color:var(--muted);margin-bottom:5px}
+input,select,button{font:inherit;border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:white;color:var(--ink);max-width:100%}
+button{font-weight:750;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+.primary{background:var(--blue);border-color:var(--blue);color:white}
+.soft{background:var(--blue2);color:#214ba8;border-color:#dbe5ff}
+.filebox{border:1.5px dashed #a9bce4;background:#f9fbff;border-radius:10px;padding:12px}
+.filebox input{width:100%;margin-top:8px}
+.status{font-size:12px;margin-top:10px;padding:9px 11px;background:#f5f7fb;border-radius:8px;color:var(--muted)}
+.status.good{background:var(--greenbg);color:var(--green)}
+.status.bad{background:var(--redbg);color:var(--red)}
+.status.warn{background:var(--amberbg);color:var(--amber)}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:14px 0}
+.stat{background:white;border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+.stat label{font-size:9px}
+.stat b{font-size:22px;display:block;margin-top:3px}
+.up{color:var(--green)}.down{color:var(--red)}
+.layout{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:14px;align-items:start}
+.sticky{position:sticky;top:8px;max-height:calc(100vh - 16px);overflow:auto}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}
+.controls input,.controls select,.filters input,.filters select{width:100%;min-width:0}
+.ranklist{display:grid;gap:7px}
+.rank{border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.rank summary{cursor:pointer;list-style:none;padding:10px;display:grid;grid-template-columns:1fr auto;gap:4px 8px}
+.rank summary::-webkit-details-marker{display:none}
+.rank summary:hover{background:#f8faff}
+.rankname{font-weight:850}
+.rankpill{font-size:10px;background:var(--greenbg);color:var(--green);padding:3px 7px;border-radius:20px;font-weight:850;white-space:nowrap}
+.rankmeta{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:10px}
+.rankbody{padding:0 9px 9px}
+.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:11px}
+.sectionhead h2{font-size:16px;margin:0}
+.filters{display:grid;grid-template-columns:repeat(6,minmax(110px,1fr));gap:9px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.tablewrap{overflow:auto;max-height:570px;border:1px solid var(--line);border-radius:9px}
+table{border-collapse:collapse;width:100%;min-width:850px;background:white}
+th,td{padding:8px 9px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right;font-size:12px}
+th{position:sticky;top:0;background:#f3f6fb;z-index:2;color:#58677e;text-transform:uppercase;font-size:9px;letter-spacing:.5px}
+td:first-child,th:first-child{text-align:left}
+tbody tr:hover{background:#f8faff}
+.symbol{font-weight:850}
+.symbol a{color:#244fae;text-decoration:none}
+.symbol a:hover{text-decoration:underline}
+.badge{display:inline-block;border-radius:20px;padding:2px 7px;font-size:9px;font-weight:850}
+.ce{background:var(--greenbg);color:var(--green)}
+.pe{background:var(--redbg);color:var(--red)}
+.flag{background:var(--amberbg);color:var(--amber)}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mini .card{margin:0;box-shadow:none}
+.miniitem{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;background:#f7f9fc;border-radius:7px;margin:5px 0}
+.note{font-size:11px;color:#76591c;background:var(--amberbg);border:1px solid #f0dfb7;border-radius:9px;padding:11px;margin-top:12px}
+.empty{text-align:center;padding:24px;color:var(--muted)}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.tabs button.active{background:#172d57;color:#fff}
+.hide{display:none!important}
+.vol-bar{display:inline-block;height:8px;border-radius:4px;background:var(--blue);opacity:.55;vertical-align:middle;margin-left:4px}
+@media(max-width:1050px){.layout{grid-template-columns:1fr}.sticky{position:static;max-height:none}.ranklist{grid-template-columns:repeat(2,minmax(0,1fr))}.filters{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:650px){header{padding:18px 14px}h1{font-size:21px}main{padding:0 9px 25px}.card{padding:12px}.stats{grid-template-columns:repeat(2,1fr);gap:7px}.stat b{font-size:19px}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.ranklist{grid-template-columns:1fr}.mini{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">NSE derivatives · UDiFF bhavcopy · Single-session analytics</div>
+  <h1>F&O Single-Session Premium Intelligence</h1>
+  <p>Upload one NSE UDiFF stock-options bhavcopy (CSV or ZIP) to analyse premium movers, CE/PE strength, strike-wise and expiry-wise activity, volume, open interest, volatility, and stock-level ranking.</p>
+</header>
+<main>
+
+<section class="card">
+  <div class="sectionhead"><h2>1. Load today's UDiFF bhavcopy</h2><span class="badge" style="background:#edf3ff;color:#2458bd">STO stock options only</span></div>
+  <div class="filebox">
+    <b>Current session UDiFF CSV / ZIP</b>
+    <div class="hint">NSE stock-options bhavcopy (FinInstrmTp = STO). Index options and futures are excluded.</div>
+    <input id="currentFile" type="file" accept=".csv,.zip,text/csv,application/zip">
+    <div class="tiny" id="currentName">No file selected</div>
+  </div>
+  <div class="row" style="margin-top:11px">
+    <button class="primary" id="analyse">Analyse session</button>
+    <button class="soft" id="remember">Save file on this device</button>
+    <button id="clearSaved">Clear saved file</button>
+    <button id="reset">Reset</button>
+    <a href="https://www.nseindia.com/all-reports-derivatives" target="_blank" rel="noopener">NSE official derivatives reports ↗</a>
+  </div>
+  <div id="status" class="status">Select today's session file. Files are processed locally in this browser; no upload to a server is performed.</div>
+  <div id="validation" class="hint" style="margin-top:8px">Contract identity uses instrument type + symbol + expiry + strike + CE/PE. Premium change is measured from the session's previous close to its close.</div>
+</section>
+
+<section class="stats">
+  <div class="stat"><label>Stock-option contracts</label><b id="total">0</b></div>
+  <div class="stat"><label>Premium rising</label><b id="rising" class="up">0</b></div>
+  <div class="stat"><label>Premium falling</label><b id="falling" class="down">0</b></div>
+  <div class="stat"><label>Rising CE</label><b id="riseCE">0</b></div>
+  <div class="stat"><label>Rising PE</label><b id="risePE">0</b></div>
+  <div class="stat"><label>Stocks covered</label><b id="stocks">0</b></div>
+</section>
+
+<div class="layout">
+<aside class="card sticky">
+  <div class="sectionhead"><h2>2. Stock-wise strength ranking</h2><span class="badge" style="background:#e8f7f0;color:#087b55">Breadth ranking</span></div>
+  <div class="controls">
+    <div><label>Rank list</label><select id="limit"><option value="100">Top 100</option><option value="50">Top 50</option><option value="200">Top 200</option><option value="all">All stocks</option></select></div>
+    <div><label>Minimum rising strikes</label><select id="minStrikes"><option value="1">1+</option><option value="2">2+</option><option value="3" selected>3+</option><option value="5">5+</option><option value="10">10+</option></select></div>
+    <div><label>Previous close floor ₹</label><input id="floor" type="number" min="0" step=".05" value="0"></div>
+    <div><label>Option side</label><select id="side"><option value="ALL">CE + PE</option><option>CE</option><option>PE</option></select></div>
+    <div><label>Ranking priority</label><select id="rankBy"><option value="breadth">Rising strikes</option><option value="combos">Strike-expiry pairs</option><option value="avg">Average gain %</option><option value="volume">Rising volume</option><option value="oi">Rising OI</option></select></div>
+    <div><label>Expiry filter</label><select id="rankExpiry"><option value="ALL">All expiries</option></select></div>
+  </div>
+  <div class="status" id="rankSummary">Load a session file to calculate stock breadth.</div>
+  <div class="ranklist" id="rankList"><div class="empty">Stock ranking appears here.</div></div>
+  <div class="note"><b>Interpretation:</b> A stock is flagged when rising premium breadth is confined to one strike or one expiry. Broad multi-strike participation is generally more meaningful than a single extreme percentage spike. This is an informational scan, not a trade recommendation.</div>
+</aside>
+
+<section>
+  <div class="card">
+    <div class="sectionhead"><h2>3. Contract explorer</h2><span class="hint" id="dates">No date loaded</span></div>
+    <div class="filters">
+      <div><label>Stock symbol</label><input id="search" type="search" placeholder="e.g. RELIANCE"></div>
+      <div><label>Option type</label><select id="type"><option value="ALL">CE + PE</option><option>CE</option><option>PE</option></select></div>
+      <div><label>Expiry</label><select id="expiry"><option value="ALL">All expiries</option></select></div>
+      <div><label>Movement</label><select id="movement"><option value="ALL">Up + Down</option><option value="UP">Rising only</option><option value="DOWN">Falling only</option></select></div>
+      <div><label>Minimum |change %|</label><input id="minPct" type="number" step=".1" placeholder="e.g. 5"></div>
+      <div><label>Sort by</label><select id="sort"><option value="change">Premium % high → low</option><option value="low">Premium % low → high</option><option value="volume">Volume high → low</option><option value="oi">OI high → low</option><option value="volatility">Volatility high → low</option><option value="symbol">Symbol A → Z</option></select></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="apply">Apply filters</button>
+      <button id="clearFilters">Clear filters</button>
+      <button class="soft" id="csv">Export CSV</button>
+      <button class="soft" id="excel">Export Excel</button>
+      <button class="soft" id="copy">Copy table</button>
+      <button class="soft" id="print">Print / Save PDF</button>
+    </div>
+    <div class="resultline hint" id="resultCount">0 contracts</div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Stock / News</th><th>Expiry</th><th>Strike</th><th>Side</th><th>Prev close ₹</th><th>Close ₹</th><th>Change %</th><th>Volume</th><th>OI</th><th>OI Δ</th><th>Intraday range %</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="11" class="empty">Load data to view contracts.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mini">
+    <div class="card">
+      <h3>Top premium gainers</h3>
+      <div id="topGainers" class="hint">No data</div>
+    </div>
+    <div class="card">
+      <h3>Top premium losers</h3>
+      <div id="topLosers" class="hint">No data</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="tabs">
+      <button class="active" id="tabStrike">Strike-wise</button>
+      <button id="tabExpiry">Expiry-wise</button>
+      <button id="tabCEPE">CE vs PE</button>
+      <button id="tabVolume">Volume</button>
+      <button id="tabOI">OI</button>
+      <button id="tabVolatility">Volatility</button>
+    </div>
+    <div id="panelStrike">
+      <div class="hint" style="margin-bottom:8px">Strongest strikes by average premium change across all stocks and expiries (strike levels with ≥2 contracts).</div>
+      <div class="tablewrap"><table><thead><tr><th>Strike</th><th>Contracts</th><th>Stocks</th><th>Avg change %</th><th>Max change %</th><th>Total volume</th><th>Total OI</th></tr></thead><tbody id="strikeBody"><tr><td colspan="7" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+    <div id="panelExpiry" class="hide">
+      <div class="hint" style="margin-bottom:8px">Expiry-wise premium movement. Short expiries are typically more sensitive to spot moves.</div>
+      <div class="tablewrap"><table><thead><tr><th>Expiry</th><th>Contracts</th><th>Stocks</th><th>Avg change %</th><th>Rising</th><th>Falling</th><th>Rising CE</th><th>Rising PE</th><th>Total volume</th><th>Total OI</th></tr></thead><tbody id="expiryBody"><tr><td colspan="10" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+    <div id="panelCEPE" class="hide">
+      <div class="hint" style="margin-bottom:8px">CE vs PE strength: rising calls suggest bullish activity, rising puts suggest bearish/hedging activity. Volume and OI shown are totals over rising contracts only.</div>
+      <div class="tablewrap"><table><thead><tr><th>Side</th><th>Contracts</th><th>Rising</th><th>Falling</th><th>Avg change %</th><th>Rising volume</th><th>Rising OI</th><th>Rising stocks</th></tr></thead><tbody id="cepeBody"><tr><td colspan="8" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+    <div id="panelVolume" class="hide">
+      <div class="hint" style="margin-bottom:8px">Unusual volume: contracts trading far above the median contract volume this session.</div>
+      <div class="tablewrap"><table><thead><tr><th>Stock</th><th>Expiry</th><th>Strike</th><th>Side</th><th>Volume</th><th>× median</th><th>Change %</th><th>OI</th></tr></thead><tbody id="volumeBody"><tr><td colspan="8" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+    <div id="panelOI" class="hide">
+      <div class="hint" style="margin-bottom:8px">Open interest: largest OI build-up (positive OI Δ) and unwinding (negative OI Δ).</div>
+      <div class="tablewrap"><table><thead><tr><th>Stock</th><th>Expiry</th><th>Strike</th><th>Side</th><th>OI</th><th>OI Δ</th><th>OI Δ %</th><th>Change %</th></tr></thead><tbody id="oiBody"><tr><td colspan="8" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+    <div id="panelVolatility" class="hide">
+      <div class="hint" style="margin-bottom:8px">High-volatility contracts: widest intraday range and largest absolute premium change, using available OHLC data.</div>
+      <div class="tablewrap"><table><thead><tr><th>Stock</th><th>Expiry</th><th>Strike</th><th>Side</th><th>High ₹</th><th>Low ₹</th><th>Range %</th><th>Change %</th><th>Volume</th></tr></thead><tbody id="volatilityBody"><tr><td colspan="9" class="empty">No data</td></tr></tbody></table></div>
+    </div>
+  </div>
+</section>
+</div>
+
+<section class="card">
+  <div class="sectionhead"><h2>Methodology & data integrity</h2></div>
+  <div class="hint" id="methodDates">Session date will appear after loading.</div>
+  <ul class="hint">
+    <li>Premium change = (close − previous close) ÷ previous close × 100. Contracts with missing or zero previous close, missing close, or non-STO instruments are excluded.</li>
+    <li>Only NSE UDiFF STO (stock-option) contracts are included. IDO index options and futures are excluded.</li>
+    <li>Strike count is the number of distinct strikes per stock across CE/PE and expiries; strike-expiry pairs are counted separately.</li>
+    <li>Stock ranking: distinct rising strikes, then distinct strike-expiry combinations, then average premium change. Alternative ranking modes are provided.</li>
+    <li>Volume and OI are session totals; summed values over rising contracts should not be interpreted as directional order flow.</li>
+    <li>High-volatility view uses available high/low fields. If OHLC fields are absent, only premium change is used for volatility ranking.</li>
+    <li>Clicking a stock symbol opens a Google News search. This tool is an informational scan, not a trade recommendation.</li>
+  </ul>
+  <div class="tiny">Official source: <a href="https://www.nseindia.com/all-reports-derivatives" target="_blank" rel="noopener">NSE All Reports – Derivatives</a>. No stale-session substitution is performed.</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let rows=[],filtered=[],sessionDate="",activeTab="strike";
+
+const norm=s=>String(s??"").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+const num=v=>{if(v===null||v===undefined||String(v).trim()==="")return NaN;let n=Number(String(v).replace(/,/g,"").trim());return Number.isFinite(n)?n:NaN};
+const fmt=n=>Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:2});
+const pct=n=>(n>0?"+":"")+Number(n).toFixed(2)+"%";
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function val(r,names){
+  let ks=Object.keys(r||{});
+  for(let n of names){
+    let k=ks.find(x=>norm(x)===norm(n));
+    if(k!==undefined)return r[k];
+  }
+  return "";
+}
+
+function iso(v){
+  if(!v)return"";
+  let s=String(v).trim();
+  if(/^\d{8}$/.test(s))return s.slice(0,4)+"-"+s.slice(4,6)+"-"+s.slice(6,8);
+  let m=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if(m)return `${m[3]}-${m[2]}-${m[1]}`;
+  let d=new Date(s);
+  return Number.isNaN(d.getTime())?"":d.toISOString().slice(0,10);
+}
+
+function parseCSVText(text){
+  if(!window.Papa)throw Error("CSV parser library unavailable. Connect to internet and reload.");
+  let p=Papa.parse(text,{header:true,skipEmptyLines:true,dynamicTyping:false});
+  if(p.errors?.length&&p.data.length===0)throw Error(p.errors[0].message);
+  return p.data;
+}
+
+async function readFile(file){
+  let name=file.name.toLowerCase();
+  if(name.endsWith(".zip")){
+    if(!window.JSZip)throw Error("ZIP library unavailable. Extract the CSV or connect to internet.");
+    let z=await JSZip.loadAsync(await file.arrayBuffer());
+    let f=Object.values(z.files).find(x=>!x.dir&&x.name.toLowerCase().endsWith(".csv"));
+    if(!f)throw Error("No CSV found inside ZIP.");
+    return parseCSVText(await f.async("string"));
+  }
+  return parseCSVText(await file.text());
+}
+
+function parseSession(data,label){
+  if(!data.length)throw Error(label+" file is empty.");
+  let first=data[0];
+  let trade=iso(val(first,["TradDt","Trade Date"]));
+  let result=[],skip=0;
+  for(let r of data){
+    let inst=String(val(r,["FinInstrmTp","Financial Instrument Type"])).trim().toUpperCase();
+    let side=String(val(r,["OptnTp","Option Type"])).trim().toUpperCase();
+    if(inst!=="STO"||!["CE","PE"].includes(side)){skip++;continue}
+    let symbol=String(val(r,["TckrSymb","Symbol"])).trim().toUpperCase();
+    let expiry=iso(val(r,["XpryDt","Expiry Date"]));
+    let strike=num(val(r,["StrkPric","Strike Price"]));
+    let close=num(val(r,["ClsPric","Close"]));
+    let prevClose=num(val(r,["PrvsClsgPric","Previous Close","Prev Close"]));
+    if(!symbol||!expiry||!Number.isFinite(strike)||!Number.isFinite(close)||!Number.isFinite(prevClose)||prevClose<=0){skip++;continue}
+    let high=num(val(r,["HghPric","High Price","High"]));
+    let low=num(val(r,["LwPric","Low Price","Low"]));
+    if(!Number.isFinite(high)||!Number.isFinite(low)){high=NaN;low=NaN}
+    let change=(close-prevClose)/prevClose*100;
+    let rangePct=(Number.isFinite(high)&&Number.isFinite(low)&&low>0)?(high-low)/low*100:NaN;
+    result.push({
+      inst,symbol,expiry,strike,side,previous:prevClose,close,change,
+      volume:num(val(r,["TtlTradgVol","Total Trading Volume"]))||0,
+      oi:num(val(r,["OpnIntrst","Open Interest"]))||0,
+      oiChange:num(val(r,["ChngInOpnIntrst","Change in Open Interest"]))||0,
+      high,low,rangePct
+    });
+  }
+  return {trade,result,skip,count:data.length};
+}
+
+function analyse(s){
+  if(!s.trade)throw Error("Could not identify TradDt in the file. Check UDiFF headers.");
+  if(!s.result.length)throw Error("No valid STO stock-option contracts found. Confirm this is an NSE UDiFF stock-options bhavcopy.");
+  rows=s.result;sessionDate=s.trade;
+  fillSelect("expiry",new Set(rows.map(x=>x.expiry)));
+  fillSelect("rankExpiry",new Set(rows.map(x=>x.expiry)));
+  updateStats();applyAll();renderAnalytics();
+  $("dates").textContent=s.trade;
+  $("methodDates").textContent=`Session: ${s.trade} | Valid stock-option contracts: ${fmt(rows.length)} | Rows skipped: ${fmt(s.skip)} of ${fmt(s.count)}.`;
+  $("status").className="status good";
+  $("status").textContent=`Analysis complete: ${fmt(rows.length)} stock-option contracts across ${fmt(new Set(rows.map(x=>x.symbol)).size)} stocks for ${s.trade}.`;
+  $("validation").textContent=`File rows ${fmt(s.count)} · Valid STO contracts ${fmt(s.result.length)} · Skipped ${fmt(s.skip)}.`;
+}
+
+function fillSelect(id,set){
+  let old=$(id).value,vals=[...set].filter(Boolean).sort();
+  $(id).innerHTML='<option value="ALL">All expiries</option>'+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if(vals.includes(old))$(id).value=old;
+}
+
+function updateStats(){
+  let floor=Math.max(0,num($("floor").value)||0);
+  let valid=rows.filter(r=>r.previous>=floor);
+  $("total").textContent=fmt(rows.length);
+  $("rising").textContent=fmt(valid.filter(r=>r.change>0).length);
+  $("falling").textContent=fmt(valid.filter(r=>r.change<0).length);
+  $("riseCE").textContent=fmt(valid.filter(r=>r.change>0&&r.side==="CE").length);
+  $("risePE").textContent=fmt(valid.filter(r=>r.change>0&&r.side==="PE").length);
+  $("stocks").textContent=fmt(new Set(valid.map(r=>r.symbol)).size);
+}
+
+function stockGroups(){
+  let floor=Math.max(0,num($("floor").value)||0),side=$("side").value,exp=$("rankExpiry").value;
+  let base=rows.filter(r=>r.change>0&&r.previous>=floor&&(side==="ALL"||r.side===side)&&(exp==="ALL"||r.expiry===exp));
+  let map=new Map();
+  for(let r of base){
+    if(!map.has(r.symbol))map.set(r.symbol,{symbol:r.symbol,contracts:[],strikes:new Set(),pairs:new Set(),expiries:new Set(),ce:0,pe:0,volume:0,oi:0});
+    let g=map.get(r.symbol),s=String(r.strike);
+    g.contracts.push(r);g.strikes.add(s);g.pairs.add(r.expiry+"|"+s);g.expiries.add(r.expiry);
+    if(r.side==="CE")g.ce++;else g.pe++;
+    g.volume+=r.volume;g.oi+=r.oi;
+  }
+  let groups=[...map.values()].map(g=>{
+    let ch=g.contracts.map(x=>x.change).sort((a,b)=>a-b);
+    let top=g.contracts.slice().sort((a,b)=>b.change-a.change)[0];
+    let topExpiryShare=Math.max(...[...new Set(g.contracts.map(x=>x.expiry))].map(e=>g.contracts.filter(x=>x.expiry===e).length))/g.contracts.length;
+    return {...g,strikeCount:g.strikes.size,pairCount:g.pairs.size,expiryCount:g.expiries.size,
+      avg:ch.reduce((s,x)=>s+x,0)/ch.length,max:Math.max(...ch),top,oneStrike:g.strikes.size===1,oneExpiry:g.expiries.size===1,topExpiryShare};
+  });
+  let mode=$("rankBy").value;
+  groups.sort((x,y)=>
+    mode==="combos"?y.pairCount-x.pairCount||y.strikeCount-x.strikeCount||y.avg-x.avg:
+    mode==="avg"?y.avg-x.avg||y.strikeCount-x.strikeCount:
+    mode==="volume"?y.volume-x.volume||y.strikeCount-x.strikeCount:
+    mode==="oi"?y.oi-x.oi||y.strikeCount-x.strikeCount:
+    y.strikeCount-x.strikeCount||y.pairCount-x.pairCount||y.avg-x.avg
+  );
+  return groups.filter(g=>g.strikeCount>=Number($("minStrikes").value));
+}
+
+function applyAll(){renderRanks();applyFilters();updateStats()}
+
+function renderRanks(){
+  let gs=stockGroups(),lim=$("limit").value==="all"?gs.length:Number($("limit").value);
+  let floor=Math.max(0,num($("floor").value)||0);
+  $("rankSummary").textContent=`${gs.length} qualifying stocks · ${fmt(rows.filter(r=>r.change>0&&r.previous>=floor).length)} rising contracts · sorted by ${$("rankBy").selectedOptions[0].text}`;
+  $("rankList").innerHTML=gs.slice(0,lim).map((g,i)=>{
+    let flags=[];
+    if(g.oneStrike)flags.push("ONE STRIKE");
+    if(g.oneExpiry)flags.push("ONE EXPIRY");
+    if(g.topExpiryShare>=.75&&g.expiryCount>1)flags.push("EXPIRY CONCENTRATION");
+    let contracts=g.contracts.slice().sort((a,b)=>b.change-a.change).map(r=>
+      `<tr><td>${r.expiry}</td><td>${fmt(r.strike)}</td><td><span class="badge ${r.side.toLowerCase()}">${r.side}</span></td><td class="up"><b>${pct(r.change)}</b></td><td>${fmt(r.previous)}</td><td>${fmt(r.close)}</td><td>${fmt(r.volume)}</td><td>${fmt(r.oi)}</td></tr>`
+    ).join("");
+    return `<details class="rank"><summary><span class="rankname">${i+1}. ${esc(g.symbol)}</span><span class="rankpill">${g.strikeCount} strikes ↑</span><span class="rankmeta"><span>${g.pairCount} strike-expiry pairs</span><span>${g.expiryCount} expiries</span><span>CE ${g.ce} / PE ${g.pe}</span><span>Avg ${pct(g.avg)}</span><span>Max ${pct(g.max)}</span><span>Vol ${fmt(g.volume)}</span><span>OI ${fmt(g.oi)}</span>${flags.length?`<span class="badge flag">${flags.join(" · ")}</span>`:"<span class='badge ce'>BROAD / MULTI-STRIKE</span>"}</span></summary><div class="rankbody"><div class="tiny">Strongest contract: ${esc(g.top.symbol)} ${fmt(g.top.strike)} ${g.top.side} · ${g.top.expiry} · ${pct(g.top.change)}</div><div class="tablewrap"><table><thead><tr><th>Expiry</th><th>Strike</th><th>Side</th><th>Change</th><th>Prev ₹</th><th>Close ₹</th><th>Volume</th><th>OI</th></tr></thead><tbody>${contracts}</tbody></table></div></div></details>`;
+  }).join("")||'<div class="empty">No stocks meet the selected minimum rising-strike threshold.</div>';
+}
+
+function applyFilters(){
+  let q=$("search").value.trim().toUpperCase(),type=$("type").value,ex=$("expiry").value,mov=$("movement").value,min=num($("minPct").value);
+  let floor=Math.max(0,num($("floor").value)||0);
+  filtered=rows.filter(r=>
+    r.previous>=floor&&
+    (!q||r.symbol.includes(q))&&
+    (type==="ALL"||r.side===type)&&
+    (ex==="ALL"||r.expiry===ex)&&
+    (mov==="ALL"||(mov==="UP"?r.change>0:r.change<0))&&
+    (!Number.isFinite(min)||Math.abs(r.change)>=min)
+  );
+  let s=$("sort").value;
+  filtered.sort((a,b)=>
+    s==="low"?a.change-b.change:
+    s==="volume"?b.volume-a.volume:
+    s==="oi"?b.oi-a.oi:
+    s==="volatility"?(b.rangePct||0)-(a.rangePct||0):
+    s==="symbol"?a.symbol.localeCompare(b.symbol):
+    b.change-a.change
+  );
+  renderTable();renderMovers();
+}
+
+function newsURL(s){return "https://www.google.com/search?tbm=nws&q="+encodeURIComponent(s+" stock news")}
+
+function renderTable(){
+  $("resultCount").textContent=`Showing ${fmt(filtered.length)} of ${fmt(rows.length)} contracts (₹${fmt(Math.max(0,num($("floor").value)||0))} previous close floor)`;
+  $("tbody").innerHTML=filtered.slice(0,5000).map(r=>{
+    let volBar="";
+    if(r.volume>0){
+      let maxVol=Math.max(...rows.map(x=>x.volume));
+      let w=Math.min(100,Math.round(r.volume/maxVol*80));
+      volBar=`<span class="vol-bar" style="width:${w}px"></span>`;
+    }
+    let range=r.rangePct?pct(r.rangePct):"—";
+    return `<tr><td class="symbol"><a target="_blank" rel="noopener" href="${newsURL(r.symbol)}">${esc(r.symbol)} ↗</a></td><td>${r.expiry}</td><td>${fmt(r.strike)}</td><td><span class="badge ${r.side.toLowerCase()}">${r.side}</span></td><td>${fmt(r.previous)}</td><td>${fmt(r.close)}</td><td class="${r.change>0?"up":r.change<0?"down":""}"><b>${pct(r.change)}</b></td><td>${fmt(r.volume)}${volBar}</td><td>${fmt(r.oi)}</td><td>${fmt(r.oiChange)}</td><td>${range}</td></tr>`;
+  }).join("")||'<tr><td colspan="11" class="empty">No contracts match the filters.</td></tr>';
+}
+
+function renderMovers(){
+  let gainers=filtered.filter(x=>x.change>0).sort((x,y)=>y.change-x.change).slice(0,10);
+  let losers=filtered.filter(x=>x.change<0).sort((x,y)=>x.change-y.change).slice(0,10);
+  $("topGainers").innerHTML=gainers.map(r=>`<div class="miniitem"><span><b>${esc(r.symbol)}</b> ${fmt(r.strike)} ${r.side} <small class="tiny">· ${r.expiry}</small></span><b class="up">${pct(r.change)}</b></div>`).join("")||"No rising contracts after filters.";
+  $("topLosers").innerHTML=losers.map(r=>`<div class="miniitem"><span><b>${esc(r.symbol)}</b> ${fmt(r.strike)} ${r.side} <small class="tiny">· ${r.expiry}</small></span><b class="down">${pct(r.change)}</b></div>`).join("")||"No falling contracts after filters.";
+}
+
+function renderAnalytics(){
+  let floor=Math.max(0,num($("floor").value)||0),base=rows.filter(r=>r.previous>=floor);
+  // Strike-wise
+  let strikeMap=new Map();
+  for(let r of base){
+    let k=String(r.strike);
+    if(!strikeMap.has(k))strikeMap.set(k,{strike:r.strike,contracts:[],stocks:new Set(),volume:0,oi:0});
+    let g=strikeMap.get(k);g.contracts.push(r);g.stocks.add(r.symbol);g.volume+=r.volume;g.oi+=r.oi;
+  }
+  let strikes=[...strikeMap.values()].filter(g=>g.contracts.length>=2).map(g=>{
+    let ch=g.contracts.map(x=>x.change);
+    return {...g,count:g.contracts.length,avg:ch.reduce((s,x)=>s+x,0)/ch.length,max:Math.max(...ch)};
+  }).sort((a,b)=>b.avg-a.avg).slice(0,50);
+  $("strikeBody").innerHTML=strikes.map(g=>`<tr><td><b>${fmt(g.strike)}</b></td><td>${g.count}</td><td>${g.stocks.size}</td><td class="up"><b>${pct(g.avg)}</b></td><td>${pct(g.max)}</td><td>${fmt(g.volume)}</td><td>${fmt(g.oi)}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">No data</td></tr>';
+
+  // Expiry-wise
+  let expMap=new Map();
+  for(let r of base){
+    if(!expMap.has(r.expiry))expMap.set(r.expiry,{expiry:r.expiry,contracts:[],stocks:new Set(),ce:0,pe:0,volume:0,oi:0});
+    let g=expMap.get(r.expiry);g.contracts.push(r);g.stocks.add(r.symbol);
+    if(r.side==="CE")g.ce++;else g.pe++;
+    g.volume+=r.volume;g.oi+=r.oi;
+  }
+  let expiries=[...expMap.values()].map(g=>{
+    let ch=g.contracts.map(x=>x.change);
+    return {...g,count:g.contracts.length,avg:ch.reduce((s,x)=>s+x,0)/ch.length,
+      rising:g.contracts.filter(x=>x.change>0).length,falling:g.contracts.filter(x=>x.change<0).length,
+      risingCE:g.contracts.filter(x=>x.change>0&&x.side==="CE").length,
+      risingPE:g.contracts.filter(x=>x.change>0&&x.side==="PE").length};
+  }).sort((a,b)=>a.expiry.localeCompare(b.expiry));
+  $("expiryBody").innerHTML=expiries.map(g=>`<tr><td>${g.expiry}</td><td>${g.count}</td><td>${g.stocks.size}</td><td class="${g.avg>0?"up":"down"}"><b>${pct(g.avg)}</b></td><td class="up">${g.rising}</td><td class="down">${g.falling}</td><td>${g.risingCE}</td><td>${g.risingPE}</td><td>${fmt(g.volume)}</td><td>${fmt(g.oi)}</td></tr>`).join("")||'<tr><td colspan="10" class="empty">No data</td></tr>';
+
+  // CE vs PE
+  let sides=["CE","PE"];
+  $("cepeBody").innerHTML=sides.map(side=>{
+    let s=base.filter(r=>r.side===side),rising=s.filter(r=>r.change>0),falling=s.filter(r=>r.change<0);
+    let avg=s.length?s.reduce((a,r)=>a+r.change,0)/s.length:0;
+    let rv=rising.reduce((a,r)=>a+r.volume,0),ro=rising.reduce((a,r)=>a+r.oi,0);
+    return `<tr><td><span class="badge ${side.toLowerCase()}">${side}</span></td><td>${s.length}</td><td class="up"><b>${rising.length}</b></td><td class="down">${falling.length}</td><td class="${avg>0?"up":"down"}">${pct(avg)}</td><td>${fmt(rv)}</td><td>${fmt(ro)}</td><td>${new Set(rising.map(r=>r.symbol)).size}</td></tr>`;
+  }).join("");
+
+  // Volume
+  let vols=base.filter(r=>r.volume>0).map(r=>r.volume).sort((a,b)=>a-b);
+  let median=vols.length?vols[Math.floor(vols.length/2)]:0;
+  let topVol=base.filter(r=>r.volume>0&&median>0).sort((a,b)=>b.volume-a.volume).slice(0,30);
+  $("volumeBody").innerHTML=topVol.map(r=>{
+    let mult=median?r.volume/median:0;
+    return `<tr><td class="symbol"><a target="_blank" rel="noopener" href="${newsURL(r.symbol)}">${esc(r.symbol)} ↗</a></td><td>${r.expiry}</td><td>${fmt(r.strike)}</td><td><span class="badge ${r.side.toLowerCase()}">${r.side}</span></td><td><b>${fmt(r.volume)}</b></td><td>${mult.toFixed(1)}×</td><td class="${r.change>0?"up":"down"}">${pct(r.change)}</td><td>${fmt(r.oi)}</td></tr>`;
+  }).join("")||'<tr><td colspan="8" class="empty">No data</td></tr>';
+
+  // OI
+  let topOI=base.filter(r=>r.oiChange!==0).sort((a,b)=>b.oiChange-a.oiChange).slice(0,15);
+  let bottomOI=base.filter(r=>r.oiChange!==0).sort((a,b)=>a.oiChange-b.oiChange).slice(0,15);
+  let oiRows=[...topOI,...bottomOI];
+  $("oiBody").innerHTML=oiRows.map(r=>{
+    let pctOI=r.oi>0?(r.oiChange/r.oi*100):0;
+    return `<tr><td class="symbol"><a target="_blank" rel="noopener" href="${newsURL(r.symbol)}">${esc(r.symbol)} ↗</a></td><td>${r.expiry}</td><td>${fmt(r.strike)}</td><td><span class="badge ${r.side.toLowerCase()}">${r.side}</span></td><td>${fmt(r.oi)}</td><td class="${r.oiChange>0?"up":"down"}"><b>${fmt(r.oiChange)}</b></td><td class="${r.oiChange>0?"up":"down"}">${pct(pctOI)}</td><td class="${r.change>0?"up":"down"}">${pct(r.change)}</td></tr>`;
+  }).join("")||'<tr><td colspan="8" class="empty">No data</td></tr>';
+
+  // Volatility
+  let volRows=base.filter(r=>Number.isFinite(r.rangePct)&&r.rangePct>0).sort((a,b)=>b.rangePct-a.rangePct).slice(0,30);
+  if(!volRows.length)volRows=base.slice().sort((a,b)=>Math.abs(b.change)-Math.abs(a.change)).slice(0,30);
+  $("volatilityBody").innerHTML=volRows.map(r=>{
+    let h=Number.isFinite(r.high)?fmt(r.high):"—",l=Number.isFinite(r.low)?fmt(r.low):"—";
+    let rng=Number.isFinite(r.rangePct)?pct(r.rangePct):"—";
+    return `<tr><td class="symbol"><a target="_blank" rel="noopener" href="${newsURL(r.symbol)}">${esc(r.symbol)} ↗</a></td><td>${r.expiry}</td><td>${fmt(r.strike)}</td><td><span class="badge ${r.side.toLowerCase()}">${r.side}</span></td><td>${h}</td><td>${l}</td><td><b>${rng}</b></td><td class="${r.change>0?"up":"down"}">${pct(r.change)}</td><td>${fmt(r.volume)}</td></tr>`;
+  }).join("")||'<tr><td colspan="9" class="empty">No data</td></tr>';
+}
+
+function exportCSV(){
+  let cols=["symbol","expiry","strike","side","previous","close","change","volume","oi","oiChange","rangePct"];
+  let lines=[cols.join(","),...filtered.map(r=>cols.map(k=>JSON.stringify(r[k]??"")).join(","))];
+  download("NSE_FO_SingleSession_Contracts.csv",lines.join("\n"),"text/csv;charset=utf-8");
+}
+
+function download(name,content,mime){
+  let u=URL.createObjectURL(new Blob([content],{type:mime})),a=document.createElement("a");
+  a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
+}
+
+$("analyse").onclick=async()=>{
+  try{
+    let cf=$("currentFile").files[0];
+    if(!cf)throw Error("Choose a session file.");
+    $("status").className="status";
+    $("status").textContent="Reading and parsing contracts…";
+    let data=await readFile(cf);
+    let s=parseSession(data,"Current");
+    analyse(s);
+  }catch(e){
+    $("status").className="status bad";
+    $("status").textContent=e.message;
+  }
+};
+
+$("currentFile").onchange=e=>$("currentName").textContent=e.target.files[0]?.name||"No file selected";
+
+$("remember").onclick=async()=>{
+  try{
+    let c=$("currentFile").files[0];
+    if(!c)throw Error("Select a file before saving.");
+    let db=await dbOpen();
+    await dbPut(db,"current",c);
+    $("status").className="status good";
+    $("status").textContent="File saved locally on this device. It will be restored next time you open this page.";
+  }catch(e){
+    $("status").className="status bad";
+    $("status").textContent="Could not save file: "+e.message;
+  }
+};
+
+function dbOpen(){
+  return new Promise((res,rej)=>{
+    let q=indexedDB.open("NSEPremiumIntelligenceSingle",1);
+    q.onupgradeneeded=()=>q.result.createObjectStore("files");
+    q.onsuccess=()=>res(q.result);
+    q.onerror=()=>rej(q.error);
+  });
+}
+
+function dbPut(db,k,f){
+  return new Promise((res,rej)=>{
+    let t=db.transaction("files","readwrite");
+    t.objectStore("files").put({name:f.name,type:f.type,blob:f},k);
+    t.oncomplete=res;t.onerror=()=>rej(t.error);
+  });
+}
+
+function dbGet(db,k){
+  return new Promise((res,rej)=>{
+    let q=db.transaction("files").objectStore("files").get(k);
+    q.onsuccess=()=>res(q.result);
+    q.onerror=()=>rej(q.error);
+  });
+}
+
+async function restoreSaved(){
+  try{
+    let db=await dbOpen(),c=await dbGet(db,"current");
+    if(c){
+      let cf=new File([c.blob],c.name,{type:c.type});
+      let dt=new DataTransfer();dt.items.add(cf);
+      $("currentFile").files=dt.files;
+      $("currentName").textContent=c.name+" (saved locally)";
+      $("status").textContent="Restored saved bhavcopy from this device. Press Analyse session to refresh the report.";
+    }
+  }catch(e){}
+}
+
+$("clearSaved").onclick=async()=>{
+  let db=await dbOpen();
+  await new Promise((res,rej)=>{
+    let t=db.transaction("files","readwrite");
+    t.objectStore("files").clear();
+    t.oncomplete=res;t.onerror=()=>rej(t.error);
+  });
+  $("status").textContent="Saved local bhavcopy cleared.";
+};
+
+$("reset").onclick=()=>{
+  rows=[];filtered=[];sessionDate="";
+  ["total","rising","falling","riseCE","risePE","stocks"].forEach(id=>$(id).textContent="0");
+  $("rankList").innerHTML='<div class="empty">Load a session file.</div>';
+  $("tbody").innerHTML='<tr><td colspan="11" class="empty">No data.</td></tr>';
+  $("status").textContent="Analysis reset.";
+  $("dates").textContent="No date loaded";
+  $("methodDates").textContent="Session date will appear after loading.";
+  ["strikeBody","expiryBody","cepeBody","volumeBody","oiBody","volatilityBody"].forEach(id=>$(id).innerHTML='<tr><td colspan="10" class="empty">No data</td></tr>');
+  $("topGainers").innerHTML=$("topLosers").innerHTML="No data";
+};
+
+$("apply").onclick=applyAll;
+$("clearFilters").onclick=()=>{
+  ["search","minPct"].forEach(id=>$(id).value="");
+  ["type","expiry","movement","sort"].forEach((id,i)=>$(id).value=["ALL","ALL","ALL","change"][i]);
+  applyAll();
+};
+
+["minStrikes","floor","side","rankBy","rankExpiry","limit"].forEach(id=>$(id).addEventListener("change",()=>{applyAll();renderAnalytics()}));
+
+// Tabs
+const tabMap={tabStrike:"panelStrike",tabExpiry:"panelExpiry",tabCEPE:"panelCEPE",tabVolume:"panelVolume",tabOI:"panelOI",tabVolatility:"panelVolatility"};
+Object.keys(tabMap).forEach(id=>{
+  $(id).onclick=()=>{
+    Object.keys(tabMap).forEach(k=>{
+      $(k).classList.toggle("active",k===id);
+      $(tabMap[k]).classList.toggle("hide",k!==id);
+    });
+    activeTab=id.replace("tab","").toLowerCase();
+  };
+});
+
+$("csv").onclick=exportCSV;
+
+$("excel").onclick=()=>{
+  if(!filtered.length)return alert("No rows to export.");
+  if(!window.XLSX)return alert("Excel library not loaded.");
+  let data=filtered.map(r=>({
+    Stock:r.symbol,Expiry:r.expiry,Strike:r.strike,Option:r.side,
+    PreviousClose:r.previous,CurrentClose:r.close,ChangePercent:+r.change.toFixed(4),
+    Volume:r.volume,OpenInterest:r.oi,OIChange:r.oiChange,
+    IntradayRangePercent:Number.isFinite(r.rangePct)?+r.rangePct.toFixed(4):""
+  }));
+  let ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"F&O Session");
+  XLSX.writeFile(wb,"NSE_FO_SingleSession_Report.xlsx");
+};
+
+$("copy").onclick=async()=>{
+  let t=[["Stock","Expiry","Strike","Side","Previous","Close","Change %","Volume","OI","OI change","Range %"],
+    ...filtered.map(r=>[r.symbol,r.expiry,r.strike,r.side,r.previous,r.close,r.change.toFixed(2),r.volume,r.oi,r.oiChange,Number.isFinite(r.rangePct)?r.rangePct.toFixed(2):""])
+  ].map(x=>x.join("\t")).join("\n");
+  try{
+    await navigator.clipboard.writeText(t);
+    $("status").textContent="Filtered contracts copied.";
+  }catch(e){
+    alert("Clipboard unavailable in this browser.");
+  }
+};
+
+$("print").onclick=()=>window.print();
+
+restoreSaved();
+</script>
+</body>
+</html>
